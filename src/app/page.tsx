@@ -1,103 +1,333 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { Room, BookingRequest } from "../types/booking";
+import { useRoomSearch } from "../hooks/useRoomSearch";
+import { useBookings } from "../hooks/useBookings";
+import { apiService } from "../lib/api";
+import DatePicker from "../components/DatePicker";
+import RoomCard from "../components/RoomCard";
+import BookingForm from "../components/BookingForm";
+import BookingCard from "../components/BookingCard";
+import LoadingSpinner from "../components/LoadingSpinner";
+
+export default function HotelBookingApp() {
+  const [activeTab, setActiveTab] = useState<"search" | "bookings">("search");
+  const [checkInDate, setCheckInDate] = useState("");
+  const [checkOutDate, setCheckOutDate] = useState("");
+  const [maxPrice, setMaxPrice] = useState<string>("");
+  const [guestEmail, setGuestEmail] = useState(""); // For tracking user bookings
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
+  // Use custom hooks
+  const {
+    rooms,
+    loading: searchLoading,
+    error: searchError,
+    searchRooms,
+  } = useRoomSearch();
+
+  const {
+    bookings,
+    loading: bookingsLoading,
+    error: bookingsError,
+    cancelBooking,
+  } = useBookings(guestEmail);
+
+  const handleSearch = () => {
+    searchRooms(
+      checkInDate,
+      checkOutDate,
+      maxPrice ? parseInt(maxPrice) : undefined
+    );
+  };
+
+  const handleBookRoom = (room: Room) => {
+    setSelectedRoom(room);
+  };
+
+  const handleBookingSubmit = async (booking: BookingRequest) => {
+    setIsBooking(true);
+    setBookingError(null);
+
+    try {
+      await apiService.createBooking(booking);
+      setGuestEmail(booking.guest.email); // Track this user's bookings
+      setSelectedRoom(null);
+      setActiveTab("bookings");
+      alert("Booking confirmed successfully!");
+    } catch (error) {
+      setBookingError(
+        error instanceof Error ? error.message : "Error creating booking"
+      );
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
+
+    const success = await cancelBooking(bookingId);
+    if (success) {
+      alert("Booking cancelled successfully");
+    }
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <h1 className="text-3xl font-bold text-gray-900">Hotel Booking</h1>
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => setActiveTab("search")}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === "search"
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Search Rooms
+              </button>
+              <button
+                onClick={() => setActiveTab("bookings")}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === "bookings"
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                My Bookings ({bookings.length})
+              </button>
+            </nav>
+          </div>
         </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {activeTab === "search" && (
+          <div>
+            {/* Search Form */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+                Search Available Rooms
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <DatePicker
+                  label="Check-in Date"
+                  value={checkInDate}
+                  onChange={setCheckInDate}
+                  min={new Date().toISOString().split("T")[0]}
+                />
+                <DatePicker
+                  label="Check-out Date"
+                  value={checkOutDate}
+                  onChange={setCheckOutDate}
+                  min={checkInDate || new Date().toISOString().split("T")[0]}
+                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Max Price (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    placeholder="Enter max price"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSearch}
+                    disabled={searchLoading}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {searchLoading ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      "Search Rooms"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Error Display */}
+            {searchError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      Search Error
+                    </h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      {searchError}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Search Results */}
+            {rooms.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">
+                  Available Rooms ({rooms.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {rooms.map((room) => (
+                    <RoomCard
+                      key={room.id}
+                      room={room}
+                      onBook={handleBookRoom}
+                      checkInDate={checkInDate}
+                      checkOutDate={checkOutDate}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No results message */}
+            {!searchLoading &&
+              !searchError &&
+              rooms.length === 0 &&
+              checkInDate &&
+              checkOutDate && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-center">
+                  <p className="text-yellow-800">
+                    No rooms found for the selected dates and criteria.
+                  </p>
+                </div>
+              )}
+          </div>
+        )}
+
+        {activeTab === "bookings" && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-gray-900">
+                My Bookings
+              </h2>
+              {!guestEmail && (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="email"
+                    placeholder="Enter your email to view bookings"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Error Display */}
+            {bookingsError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      Error Loading Bookings
+                    </h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      {bookingsError}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {bookingsLoading && (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size="lg" />
+              </div>
+            )}
+
+            {/* No bookings state */}
+            {!bookingsLoading &&
+              !bookingsError &&
+              bookings.length === 0 &&
+              guestEmail && (
+                <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                  <p className="text-gray-600 mb-4">
+                    No bookings found for this email address.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab("search")}
+                    className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Search Rooms
+                  </button>
+                </div>
+              )}
+
+            {/* Bookings List */}
+            {!bookingsLoading && bookings.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {bookings.map((booking) => (
+                  <BookingCard
+                    key={booking.id}
+                    booking={booking}
+                    onCancel={handleCancelBooking}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Initial state - no email entered */}
+            {!guestEmail && !bookingsLoading && (
+              <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Enter your email address above to view your bookings.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      {/* Booking Form Modal */}
+      {selectedRoom && (
+        <BookingForm
+          room={selectedRoom}
+          initialCheckIn={checkInDate}
+          initialCheckOut={checkOutDate}
+          onSubmit={handleBookingSubmit}
+          onCancel={() => {
+            setSelectedRoom(null);
+            setBookingError(null);
+          }}
+          isLoading={isBooking}
+        />
+      )}
+
+      {/* Booking Error Modal */}
+      {bookingError && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-red-800 mb-4">
+              Booking Error
+            </h3>
+            <p className="text-gray-700 mb-6">{bookingError}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setBookingError(null)}
+                className="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
